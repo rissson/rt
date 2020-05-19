@@ -195,6 +195,9 @@ sub Init {
     push @args, "quiet|q!" => \($hash->{quiet})
         unless $exists{quiet};
 
+    push @args, "statement-log=s" => \($hash->{'statement-log'})
+        unless $exists{'statement-log'};
+
     my $ok = Getopt::Long::GetOptions( @args );
     Pod::Usage::pod2usage(1) if not $ok and not defined wantarray;
 
@@ -214,7 +217,9 @@ sub Init {
         RT->Config->Set(LogToSTDERR => "warning");
     }
 
+    RT->Config->Set( 'StatementLog', $hash->{'statement-log'} ) if defined $hash->{'statement-log'};
     RT::Init();
+    $RT::Handle->LogSQLStatements(1) if RT->Config->Get('StatementLog');
 
     $| = 1;
 
@@ -222,5 +227,9 @@ sub Init {
 }
 
 RT::Base->_ImportOverlays();
+
+END {
+    RT::Interface::Web::LogRecordedSQLStatements( RequestData => { Path => '/' } ) if RT->Config->Get('StatementLog');
+}
 
 1;
