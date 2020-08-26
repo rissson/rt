@@ -173,7 +173,7 @@ sub Set {
     }
     elsif (
         ($format eq 'sql' || $format eq 'iso')
-        && $args{'Value'} =~ /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)$/
+        && $args{'Value'} =~ /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)Z?$/
     ) {
         local $@;
         my $u = eval { Time::Local::timegm($6, $5, $4, $3, $2-1, $1) } || 0;
