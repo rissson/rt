@@ -1600,6 +1600,7 @@ entire database.
 sub LockForUpdate {
     my $self = shift;
 
+    my $table = $self->QuotedTableName;
     my $pk = $self->_PrimaryKey;
     my $id = @_ ? $_[0] : $self->$pk;
     $self->_expire if $self->isa("DBIx::SearchBuilder::Record::Cachable");
@@ -1608,12 +1609,11 @@ sub LockForUpdate {
         # "RESERVED" on the first UPDATE/INSERT/DELETE.  Do a no-op
         # UPDATE to force the upgade.
         return RT->DatabaseHandle->dbh->do(
-            "UPDATE " .$self->Table.
-                " SET $pk = $pk WHERE 1 = 0");
+            "UPDATE $table SET $pk = $pk WHERE 1 = 0"
+        );
     } else {
         return $self->_LoadFromSQL(
-            "SELECT * FROM ".$self->Table
-                ." WHERE $pk = ? FOR UPDATE",
+            "SELECT * FROM $table WHERE $pk = ? FOR UPDATE",
             $id,
         );
     }
@@ -2598,7 +2598,7 @@ sub _AsInsertQuery
 
     my $dbh = $RT::Handle->dbh;
 
-    my $res = "INSERT INTO ". $dbh->quote_identifier( $self->Table );
+    my $res = "INSERT INTO ". $dbh->quote_identifier( $self->QuotedTableName );
     my $values = $self->{'values'};
     $res .= "(". join( ",", map { $dbh->quote_identifier( $_ ) } sort keys %$values ) .")";
     $res .= " VALUES";

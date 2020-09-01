@@ -119,6 +119,9 @@ sub Connect {
         $ENV{'NLS_LANG'} = "AMERICAN_AMERICA.AL32UTF8";
         $ENV{'NLS_NCHAR'} = "AL32UTF8";
     }
+    if ( $db_type eq 'mysql' ) {
+        $args{QuoteTableNames} = 1;
+    }
 
     $self->SUPER::Connect(
         User => RT->Config->Get('DatabaseUser'),

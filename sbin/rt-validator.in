@@ -97,6 +97,7 @@ END
 
 my $dbh = $RT::Handle->dbh;
 my $db_type = RT->Config->Get('DatabaseType');
+my $groups_table = ($db_type eq 'mysql') ? '`Groups`' : 'Groups' ;
 
 my %TYPE = (
     'Transactions.Field'    => 'text',
@@ -641,11 +642,11 @@ push @CHECKS, 'Tickets -> other' => sub {
     {
         my $query = <<END;
 SELECT Tickets.Id, Tickets.Owner
-FROM Groups
-JOIN Tickets ON Tickets.Id = Groups.Instance
-LEFT JOIN GroupMembers ON Groups.Id = GroupMembers.GroupId
-WHERE Groups.Name = 'Owner'
-AND Groups.Domain = 'RT::Ticket-Role'
+FROM $groups_table
+JOIN Tickets ON Tickets.Id = $groups_table.Instance
+LEFT JOIN GroupMembers ON $groups_table.Id = GroupMembers.GroupId
+WHERE $groups_table.Name = 'Owner'
+AND $groups_table.Domain = 'RT::Ticket-Role'
 AND GroupMembers.MemberId IS NULL
 END
 
@@ -678,11 +679,11 @@ END
     {
         my $query = <<END;
 SELECT Tickets.Id, Tickets.Owner, GroupMembers.MemberId
-FROM Groups
-JOIN GroupMembers ON Groups.Id = GroupMembers.GroupId
-JOIN Tickets ON Tickets.Id = Groups.Instance
-WHERE Groups.Name = 'Owner'
-AND Groups.Domain = 'RT::Ticket-Role'
+FROM $groups_table
+JOIN GroupMembers ON $groups_table.Id = GroupMembers.GroupId
+JOIN Tickets ON Tickets.Id = $groups_table.Instance
+WHERE $groups_table.Name = 'Owner'
+AND $groups_table.Domain = 'RT::Ticket-Role'
 AND Tickets.Owner != GroupMembers.MemberId
 END
 
@@ -957,6 +958,7 @@ push @CHECKS, Attributes => sub {
 
 # Fix situations when Creator or LastUpdatedBy references ACL equivalence
 # group of a user instead of user
+
 push @CHECKS, 'FIX: LastUpdatedBy and Creator' => sub {
     my $res = 1;
     my %fix = ();
@@ -967,10 +969,11 @@ push @CHECKS, 'FIX: LastUpdatedBy and Creator' => sub {
             next unless $object->_Accessible( $column, 'auto' );
 
             my $table = m2t($model);
+            $table = "`$table`" if ($db_type eq 'mysql');
             my $query = <<END;
 SELECT m.id, g.id, g.Instance
 FROM
-    Groups g JOIN $table m ON g.id = m.$column
+    $groups_table g JOIN $table m ON g.id = m.$column
 WHERE
     g.Domain = ?
     AND g.Name = ?
@@ -1191,12 +1194,13 @@ push @CHECKS, 'Links: missing object' => sub {
 
         foreach my $use ( @URI_USES ) {
             my $stable = m2t( $use->{'model'} );
+            $stable = "`$stable`" if ($db_type eq 'mysql');
             my $scolumn = $use->{'column'};
 
             foreach my $tmodel ( @models ) {
                 my $tclass = 'RT::'. $tmodel;
                 my $ttable = m2t($tmodel);
-
+                $ttable = "`$ttable`" if ($db_type eq 'mysql');
                 my $tprefix = $prefix .'/'. ($tclass eq 'RT::Ticket'? 'ticket' : $tclass) .'/';
 
                 $tprefix = $prefix . '/article/' if $tclass eq 'RT::Article';
@@ -1223,7 +1227,7 @@ push @CHECKS, 'Links: missing object' => sub {
                         ." errors with links.\n",
                         'Link to a missing object in $ttable'
                                       );
-
+                    $stable =~ s/`//g;
                     delete_record($stable, $sid);
                 }
             }
@@ -1271,6 +1275,9 @@ sub check_integrity {
     my ($ttable, @tcols) = (shift, shift);
     my %args = @_;
 
+    $ttable = "`$ttable`" if ($db_type eq 'mysql');
+    $stable = "`$stable`" if ($db_type eq 'mysql');
+
     @scols = @{ $scols[0] } if ref $scols[0];
     @tcols = @{ $tcols[0] } if ref $tcols[0];
 
@@ -1305,7 +1312,8 @@ sub check_integrity {
     my $sth = execute_query( $query, @binds );
     while ( my ($sid, @set) = $sth->fetchrow_array ) {
         $res = 0;
-
+        $stable =~ s/`//g;
+        $ttable =~ s/`//g;
         print STDERR "Record #$sid in $stable references a nonexistent record in $ttable\n";
         for ( my $i = 0; $i < @scols; $i++ ) {
             print STDERR "\t$scols[$i] => '$set[$i]' => $tcols[$i]\n";
@@ -1348,6 +1356,7 @@ sub check_uniqueness {
     my $on = shift;
     my %args = @_;
 
+    $on = "`$on`" if ($db_type eq 'mysql');
     my @columns = @{ $args{'columns'} };
 
     print "Checking uniqueness of ( ", join(', ', map "'$_'", @columns )," ) in table '$on'\n"
@@ -1388,6 +1397,7 @@ sub check_uniqueness {
 
 sub load_record {
     my ($table, $id) = @_;
+    $table = "`$table`" if ($db_type eq 'mysql');
     my $sth = execute_query( "SELECT * FROM $table WHERE id = ?", $id );
     return $sth->fetchrow_hashref('NAME_lc');
 }
@@ -1395,6 +1405,7 @@ sub load_record {
 sub delete_record {
     my ($table, $id) = (@_);
     print "Deleting record #$id in $table\n" if $opt{'verbose'};
+    $table = "`$table`" if ($db_type eq 'mysql');
     my $query = "DELETE FROM $table WHERE id = ?";
     $redo_check{ $_ } = 1 foreach @{ $redo_on{'Delete'}{ $table } || [] };
     return execute_query( $query, $id );
@@ -1410,6 +1421,8 @@ sub update_records {
     my $table = shift;
     my $where = shift;
     my $what = shift;
+
+    $table = "`$table`" if ($db_type eq 'mysql');
 
     my (@where_cols, @where_binds);
     while ( my ($k, $v) = each %$where ) { push @where_cols, $k; push @where_binds, $v; }
